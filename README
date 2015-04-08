@@ -31,9 +31,9 @@ cp apps/mainsite/settings_local.py.example apps/mainsite/settings_local.py
 ./manage.py migrate
 gulp
 
-./manage py createsuperuser
+./manage.py createsuperuser
 
 ### Run a server
 ./manage.py runserver
-Navigtate to http://localhost:8000/account/login
+Navigtate to http://localhost:8000/accounts/login
 
