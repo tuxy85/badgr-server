@@ -1,7 +1,9 @@
+from traceback import format_exc
+
 from allauth.account.utils import user_email
 from allauth.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, HttpResponse
 from rest_framework.exceptions import AuthenticationFailed
 
 from badgrsocialauth.utils import set_session_verification_email, get_session_auth_token, get_verified_user
@@ -29,4 +31,12 @@ class BadgrSocialAccountAdapter(DefaultSocialAccountAdapter):
                 request.user = verified_user
         except AuthenticationFailed as e:
             raise ImmediateHttpResponse(HttpResponseForbidden(e.detail))
+
+    def authentication_error(self,
+                             request,
+                             provider_id,
+                             error=None,
+                             exception=None,
+                             extra_context=None):
+        raise ImmediateHttpResponse(HttpResponse(format_exc(exception)))
 

@@ -30,6 +30,8 @@ urlpatterns = [
     url(r'^$', info_view, name='index'),
     url(r'^accounts/login/$', RedirectToUiLogin.as_view(), name='legacy_login_redirect'),
 
+    # url(r'^accounts/login/$', RedirectToUiLogin.as_view(), name='legacy_login_redirect'),
+
     # Admin URLs
     url(r'^staff/clear-cache$', ClearCacheView.as_view(), name='badgr_admin_clear_cache'),
     url(r'^staff/', include(badgr_admin.urls)),
