@@ -29,6 +29,7 @@ from mainsite.utils import backoff_cache_key, client_ip_from_request
 
 badgrlogger = badgrlog.BadgrLogger()
 
+
 class AuthorizationSerializer(serializers.Serializer):
     client_id = serializers.CharField(required=True)
     redirect_uri = serializers.URLField(required=True)
