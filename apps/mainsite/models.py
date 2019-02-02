@@ -30,6 +30,7 @@ from rest_framework.authtoken.models import Token
 
 from mainsite.utils import OriginSetting, fetch_remote_file_to_storage
 from .mixins import ResizeUploadedImage
+from .utils import generate_random_fake_badge_connect_domain
 
 
 AUTH_USER_MODEL = getattr(settings, 'AUTH_USER_MODEL', 'auth.User')
@@ -132,6 +133,13 @@ class DefinedScopesValidator(object):
         return isinstance(other, self.__class__)
 
 
+class ApplicationInfoManager(Manager):
+    def get_by_redirect_uri(self, redirect_uri):
+        url = urlparse.urlparse(redirect_uri)
+        origin = url.netloc
+        return self.get(manifest_domain=origin)
+
+
 class ApplicationInfo(cachemodel.CacheModel):
     application = models.OneToOneField('oauth2_provider.Application')
     icon = models.FileField(blank=True, null=True)
@@ -139,6 +147,14 @@ class ApplicationInfo(cachemodel.CacheModel):
     website_url = models.URLField(blank=True, null=True, default=None)
     allowed_scopes = models.TextField(blank=False, validators=[DefinedScopesValidator()])
     trust_email_verification = models.BooleanField(default=False)
+
+    # Badge Connect Extra Data
+    manifest_domain = models.CharField(max_length=254, unique=True, default=generate_random_fake_badge_connect_domain)
+    terms_url = models.URLField(blank=True, null=True)
+    privacy_url = models.URLField(blank=True, null=True)
+    api_base = models.URLField(blank=True, null=True)
+
+    objects = ApplicationInfoManager()
 
     def get_visible_name(self):
         if self.name:

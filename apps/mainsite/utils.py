@@ -157,3 +157,7 @@ def list_of(value):
     elif isinstance(value, list):
         return value
     return [value]
+
+
+def generate_random_fake_badge_connect_domain():
+    return generate_entity_uri() + '.fake'

@@ -3,6 +3,8 @@ from oauth2_provider.oauth2_validators import OAuth2Validator, AccessToken, Refr
 from oauth2_provider.scopes import get_scopes_backend
 from oauthlib.oauth2 import Server
 
+from mainsite.models import ApplicationInfo
+
 
 class BadgrOauthServer(Server):
     """
@@ -46,3 +48,10 @@ class BadgrRequestValidator(OAuth2Validator):
 
         return False
 
+    def _load_application(self, client_id, request):
+        if client_id == 'BADGE_CONNECT' and request.redirect_uri:
+            try:
+                request.client = ApplicationInfo.objects.get_by_redirect_uri(request.redirect_uri).application
+            except ApplicationInfo.DoesNotExist:
+                return None
+        return super(BadgrRequestValidator, self)._load_application(client_id, request)

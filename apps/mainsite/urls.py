@@ -9,7 +9,8 @@ badgr_admin.autodiscover()
 # make sure that any view/model/form imports occur AFTER admin.autodiscover
 
 from django.views.generic.base import RedirectView, TemplateView
-from mainsite.badge_connect_api import BadgeConnectManifestView
+from mainsite.badge_connect_api import (BadgeConnectKeysetView, BadgeConnectManifestView,
+                                        BadgeConnectManifestRedirectView)
 from mainsite.views import SitewideActionFormView, LoginAndObtainAuthToken, RedirectToUiLogin, DocsAuthorizeRedirect
 from mainsite.views import info_view, email_unsubscribe, AppleAppSiteAssociation, error404, error500
 
@@ -33,7 +34,9 @@ urlpatterns = [
     url(r'^o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
 
     # Badge Connect URLs
-    url(r'^\.well-known/badgeconnect.json$', BadgeConnectManifestView.as_view(), name='badge_connect_manifest'),
+    url(r'^bc/v1/manifest/(?P<domain>[^/]+)$', BadgeConnectManifestView.as_view(), name='badge_connect_manifest'),
+    url(r'^\.well-known/badgeconnect.json$', BadgeConnectManifestRedirectView.as_view(), name='default_bc_manifest_redirect'),
+    url(r'^\.well-known/jwks.json$', BadgeConnectKeysetView.as_view(), name='badge_connect_keyset'),
 
     # Home
     url(r'^$', info_view, name='index'),

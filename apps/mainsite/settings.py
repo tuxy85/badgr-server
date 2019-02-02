@@ -421,6 +421,11 @@ OAUTH2_PROVIDER = {
         # private scopes used for integrations
         'rw:issuer:*': 'Create and update Badgeclasses, and award Assertions for a single Issuer',
         'r:assertions': 'Batch receive assertions',
+
+        # Badge Connect API Scopes
+        'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.readonly': 'List assertions in a User\'s Backpack',
+        'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.create': 'Add badges into a User\'s Backpack',
+        'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/profile.readonly': 'See who you are',
     },
     'DEFAULT_SCOPES': ['r:profile'],
 

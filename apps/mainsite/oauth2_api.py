@@ -3,7 +3,10 @@ from __future__ import unicode_literals
 
 import datetime
 import json
+from oauthlib.common import Request
 import re
+import requests
+import urlparse
 
 from django.conf import settings
 from django.core.cache import cache
@@ -69,7 +72,7 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
             scopes = ' '.join(serializer.data.get("scopes"))
             allow = serializer.data.get("allow")
             success_url = self.get_authorization_redirect_url(scopes, credentials, allow)
-            return Response({ 'success_url': success_url })
+            return Response({'success_url': success_url})
 
         except OAuthToolkitError as error:
             return Response({
@@ -77,6 +80,16 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
             }, status=HTTP_400_BAD_REQUEST)
 
     def get(self, request, *args, **kwargs):
+        application = None
+        client_id = request.query_params.get('client_id')
+        if client_id == 'BADGE_CONNECT':
+            try:
+                application = self.get_badge_connect(request, *args, **kwargs)
+            except Exception as e:
+                return Response({
+                    'error': 'Could not interpret Badge Connect configuration for the identified backpack redirect URI'
+                }, status=HTTP_400_BAD_REQUEST)
+
         # Copy/Pasta'd from oauth2_provider.views.BaseAuthorizationView.get
         try:
             scopes, credentials = self.validate_authorization_request(request)
@@ -85,8 +98,8 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
             # kwargs["scopes_descriptions"] = [all_scopes[scope] for scope in scopes]
             # at this point we know an Application instance with such client_id exists in the database
 
-            # TODO: Cache this!
-            application = get_application_model().objects.get(client_id=credentials["client_id"])
+            if application is None:
+                application = get_application_model().objects.get(client_id=credentials["client_id"])
 
             kwargs["client_id"] = credentials["client_id"]
             kwargs["redirect_uri"] = credentials["redirect_uri"]
@@ -147,6 +160,48 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
                 'error': error.oauthlib_error.description
             }, status=HTTP_400_BAD_REQUEST)
 
+    @staticmethod
+    def get_badge_connect(request, *args, **kwargs):
+        app_model = get_application_model()
+        enforce_ssl = getattr(settings, 'BADGE_CONNECT_ENFORCE_SSL', True)
+        url_scheme = 'https'
+        redirect_uri = request.query_params.get('redirect_uri', '')
+
+        supported_scopes = {
+            'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.create',
+            'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.readonly',
+            'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/profile.readonly'
+        }
+        try:
+            app = ApplicationInfo.objects.get_by_redirect_uri(redirect_uri)
+        except ApplicationInfo.DoesNotExist:
+            app = app_model.objects.create()
+            app_info = ApplicationInfo(application=app)
+
+            url = urlparse.urlparse(redirect_uri)
+            app_info.manifest_domain = url.netloc
+            if enforce_ssl is False and url.scheme == 'http':
+                url_scheme = 'http'  # Allow HTTP for development
+
+            manifest_url = '{}://{}/.well-known/badgeconnect.json'.format(url_scheme, app_info.manifest_domain)
+            manifest_data = requests.get(manifest_url, headers={'Accept': 'application/json'}).json()
+            manifest = manifest_data['badgeConnectAPI'][0]
+
+            app_info.name = manifest['name']
+            app_info.privacy_url = manifest['privacyPolicyUrl']
+            app_info.terms_url = manifest['termsOfServiceUrl']
+
+            filtered_scopes = set(manifest['scopesRequested']) & supported_scopes
+            app_info.allowed_scopes = ' '.join(filtered_scopes)
+            app_info.save()
+
+            app.name = manifest['name']
+            app.redirect_uris = ' '.join(manifest['redirectUris'])
+            app.authorization_grant_type = app.GRANT_AUTHORIZATION_CODE
+            app.save()
+
+        return app
+
 
 class TokenView(OAuth2ProviderTokenView):
 
@@ -181,26 +236,37 @@ class TokenView(OAuth2ProviderTokenView):
 
         # pre-validate scopes requested
         client_id = request.POST.get('client_id', None)
+        if grant_type == 'password' and not client_id:
+            client_id = 'public'
         requested_scopes = [s for s in scope_to_list(request.POST.get('scope', '')) if s]
-        if client_id:
+
+        if client_id == 'BADGE_CONNECT':
+            try:
+                app_info = ApplicationInfo.objects.get_by_redirect_uri(request.POST.get('redirect_uri', 'ERROR'))
+                oauth_app = app_info.application
+            except ApplicationInfo.DoesNotExist:
+                return HttpResponse(json.dumps({"error": "Could not process Badge Connect request"}), status=HTTP_400_BAD_REQUEST)
+        elif client_id:
             try:
                 oauth_app = Application.objects.get(client_id=client_id)
             except Application.DoesNotExist:
                 return HttpResponse(json.dumps({"error": "invalid client_id"}), status=HTTP_400_BAD_REQUEST)
+        else:
+            return HttpResponse(json.dumps({"error": "invalid client_id"}), status=HTTP_400_BAD_REQUEST)
 
-            try:
-                allowed_scopes = oauth_app.applicationinfo.scope_list
-            except ApplicationInfo.DoesNotExist:
-                allowed_scopes = ['r:profile']
+        try:
+            allowed_scopes = oauth_app.applicationinfo.scope_list
+        except ApplicationInfo.DoesNotExist:
+            allowed_scopes = ['r:profile']
 
-            # handle rw:issuer:* scopes
-            if 'rw:issuer:*' in allowed_scopes:
-                issuer_scopes = filter(lambda x: x.startswith(r'rw:issuer:'), requested_scopes)
-                allowed_scopes.extend(issuer_scopes)
+        # handle rw:issuer:* scopes
+        if 'rw:issuer:*' in allowed_scopes:
+            issuer_scopes = filter(lambda x: x.startswith(r'rw:issuer:'), requested_scopes)
+            allowed_scopes.extend(issuer_scopes)
 
-            filtered_scopes = set(allowed_scopes) & set(requested_scopes)
-            if len(filtered_scopes) < len(requested_scopes):
-                return HttpResponse(json.dumps({"error": "invalid scope requested"}), status=HTTP_400_BAD_REQUEST)
+        filtered_scopes = set(allowed_scopes) & set(requested_scopes)
+        if len(filtered_scopes) < len(requested_scopes):
+            return HttpResponse(json.dumps({"error": "invalid scope requested"}), status=HTTP_400_BAD_REQUEST)
 
         # let parent method do actual authentication
         response = super(TokenView, self).post(request, *args, **kwargs)

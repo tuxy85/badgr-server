@@ -200,3 +200,28 @@ class CursorPaginatedListSerializer(serializers.ListSerializer):
     @property
     def data(self):
         return super(serializers.ListSerializer, self).data
+
+
+class BadgeConnectApiInfoSerializer(serializers.Serializer):
+    name = serializers.CharField(read_only=True)
+    image = serializers.URLField(read_only=True)
+    apiBase = serializers.URLField(read_only=True)
+    version = serializers.IntegerField(read_only=True)
+    scopesOffered = serializers.ListField(read_only=True, child=serializers.URLField())
+    scopesRequested = serializers.ListField(read_only=True, child=serializers.URLField())
+    authorizationUrl = serializers.URLField(read_only=True)
+    tokenUrl = serializers.URLField(read_only=True)
+    redirectUris = serializers.ListField(read_only=True, child=serializers.URLField())
+    termsOfServiceUrl = serializers.URLField(read_only=True)
+    privacyPolicyUrl = serializers.URLField(read_only=True)
+    keys = serializers.URLField(read_only=True)
+
+
+class BadgeConnectManifestSerializer(serializers.Serializer):
+    id = serializers.URLField(read_only=True)
+    badgeConnectAPI = BadgeConnectApiInfoSerializer(many=True, read_only=True)
+
+    def to_representation(self, instance):
+        data = super(BadgeConnectManifestSerializer, self).to_representation(instance)
+        data['@context'] = 'https://w3id.org/openbadges/badgeconnect/v1'
+        return data
