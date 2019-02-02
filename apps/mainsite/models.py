@@ -149,7 +149,7 @@ class ApplicationInfo(cachemodel.CacheModel):
     trust_email_verification = models.BooleanField(default=False)
 
     # Badge Connect Extra Data
-    manifest_domain = models.CharField(max_length=254, unique=True, default=generate_random_fake_badge_connect_domain)
+    manifest_domain = models.CharField(max_length=254, blank=False, unique=True, default=generate_random_fake_badge_connect_domain)
     terms_url = models.URLField(blank=True, null=True)
     privacy_url = models.URLField(blank=True, null=True)
     api_base = models.URLField(blank=True, null=True)
