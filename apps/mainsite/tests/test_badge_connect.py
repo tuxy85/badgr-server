@@ -3,7 +3,9 @@ from __future__ import unicode_literals
 
 from Crypto.PublicKey import RSA
 import datetime
+import json
 import jwcrypto.jwk as jwk
+from openbadges.verifier.openbadges_context import OPENBADGES_CONTEXT_V2_URI, OPENBADGES_CONTEXT_V2_DICT
 import python_jwt as jwt
 import requests
 import responses
@@ -13,10 +15,10 @@ import urlparse
 
 from django.conf import settings
 from django.shortcuts import reverse
-
+from backpack.tests.utils import setup_basic_0_5_0, setup_basic_1_0, setup_resources, CURRENT_DIRECTORY
 from mainsite.badge_connect_api import badge_connect_api_info
 from mainsite.models import BadgrApp
-from mainsite.tests import BadgrTestCase
+from mainsite.tests import BadgrTestCase, SetupIssuerHelper
 
 
 class ManifestFileTests(BadgrTestCase):
@@ -44,17 +46,18 @@ class ManifestFileTests(BadgrTestCase):
         self.assertEqual(data['badgeConnectAPI'][0]['name'], ba.name)
 
 
-class BadgeConnectAuthorizationTests(BadgrTestCase):
+class BadgeConnectAuthorizationTests(BadgrTestCase, SetupIssuerHelper):
     @responses.activate
     def test_can_retrieve_authorization_endpoint(self):
         ba = BadgrApp.objects.create(name='test', cors='some.domain.com')
         info = badge_connect_api_info(ba.cors)
-        user = self.setup_user(authenticate=True)
+        user = self.setup_user(email='test@example.com', authenticate=True)
 
         # Set up relying party
         redirect_uri = 'http://exampleissuer.com/redirect'
         requested_scopes = [
             "https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.create",
+            "https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.readonly",
             "https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/profile.readonly"
         ]
         client_id = 'BADGE_CONNECT'
@@ -151,4 +154,29 @@ class BadgeConnectAuthorizationTests(BadgrTestCase):
         }
 
         response = self.client.post('/o/token', data=data)
+        self.assertEqual(response.status_code, 200)
+        token_data = json.loads(response.content)
+        access_token = token_data['access_token']
+
+        test_issuer_user = self.setup_user(authenticate=False)
+        test_issuer = self.setup_issuer(owner=test_issuer_user)
+        test_badgeclass = self.setup_badgeclass(issuer=test_issuer)
+        assertion = test_badgeclass.issue(user.email, notify=False)
+
+        # Get the assertion
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer {}'.format(access_token))
+        response = self.client.get('/bc/v1/assertions')
+        self.assertEqual(response.status_code, 200)
+
+        setup_resources([
+            {'url': 'http://a.com/assertion-embedded1', 'filename': '2_0_assertion_embedded_badgeclass.json'},
+            {'url': OPENBADGES_CONTEXT_V2_URI, 'response_body': json.dumps(OPENBADGES_CONTEXT_V2_DICT)},
+            {'url': 'http://a.com/badgeclass_image', 'filename': "unbaked_image.png"},
+        ])
+        # Post new external assertion
+        assertion.save()
+        response = self.client.post('/bc/v1/assertions', data={'id': 'http://a.com/assertion-embedded1'}, format='json')
+        self.assertEqual(response.status_code, 201)
+
+        response = self.client.get('/bc/v1/profile')
         self.assertEqual(response.status_code, 200)

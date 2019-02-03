@@ -26,6 +26,8 @@ class BaseEntityView(APIView):
             return self.v1_serializer_class
         elif self.request.version == 'v2' and hasattr(self, 'v2_serializer_class'):
             return self.v2_serializer_class
+        elif self.request.version == 'bcv1' and hasattr(self, 'bc_serializer_class'):
+            return self.bc_serializer_class
         return getattr(self, 'serializer_class', None)
 
     def get_logger(self):

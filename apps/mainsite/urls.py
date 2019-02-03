@@ -37,6 +37,7 @@ urlpatterns = [
     url(r'^bc/v1/manifest/(?P<domain>[^/]+)$', BadgeConnectManifestView.as_view(), name='badge_connect_manifest'),
     url(r'^\.well-known/badgeconnect.json$', BadgeConnectManifestRedirectView.as_view(), name='default_bc_manifest_redirect'),
     url(r'^\.well-known/jwks.json$', BadgeConnectKeysetView.as_view(), name='badge_connect_keyset'),
+    url(r'^bc/v1/', include('backpack.badge_connect_urls'), kwargs={'version': 'bcv1'}),
 
     # Home
     url(r'^$', info_view, name='index'),

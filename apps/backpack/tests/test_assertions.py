@@ -9,7 +9,6 @@ import os
 import responses
 
 from django.urls import reverse
-
 from badgeuser.models import CachedEmailAddress
 from issuer.models import BadgeClass, Issuer, BadgeInstance
 from mainsite.tests.base import BadgrTestCase, SetupIssuerHelper

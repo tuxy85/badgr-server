@@ -8,6 +8,7 @@ from rest_framework.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_400_BAD_
     HTTP_204_NO_CONTENT
 from rest_framework.views import APIView
 
+from backpack.badge_connect_serializers import BackpackAssertionSerializerBC, BackpackImportSerializerBC
 from backpack.models import BackpackCollection, BackpackBadgeShare, BackpackCollectionShare
 from backpack.serializers_v1 import CollectionSerializerV1, LocalBadgeInstanceUploadSerializerV1
 from backpack.serializers_v2 import BackpackAssertionSerializerV2, BackpackCollectionSerializerV2, \
@@ -25,11 +26,12 @@ class BackpackAssertionList(BaseEntityListView):
     model = BadgeInstance
     v1_serializer_class = LocalBadgeInstanceUploadSerializerV1
     v2_serializer_class = BackpackAssertionSerializerV2
+    bc_serializer_class = BackpackAssertionSerializerBC
     permission_classes = (AuthenticatedWithVerifiedEmail, VerifiedEmailMatchesRecipientIdentifier, BadgrOAuthTokenHasScope)
     http_method_names = ('get', 'post')
     valid_scopes = {
-        'get': ['r:backpack', 'rw:backpack'],
-        'post': ['rw:backpack'],
+        'get': ['r:backpack', 'rw:backpack', 'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.readonly'],
+        'post': ['rw:backpack', 'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.create'],
     }
 
     def get_objects(self, request, **kwargs):
@@ -57,7 +59,7 @@ class BackpackAssertionList(BaseEntityListView):
         tags=['Backpack']
     )
     def post(self, request, **kwargs):
-        if kwargs.get('version', 'v1') == 'v1':
+        if kwargs.get('version', 'v1') in ['v1', 'bcv1']:
             return super(BackpackAssertionList, self).post(request, **kwargs)
 
         raise NotImplementedError("use BackpackImportBadge.post instead")
@@ -66,6 +68,11 @@ class BackpackAssertionList(BaseEntityListView):
         context = super(BackpackAssertionList, self).get_context_data(**kwargs)
         context['format'] = self.request.query_params.get('json_format', 'v1')  # for /v1/earner/badges compat
         return context
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST' and self.request.version == 'bcv1':
+            return BackpackImportSerializerBC
+        return super(BackpackAssertionList, self).get_serializer_class()
 
 
 class BackpackAssertionDetail(BaseEntityDetailView):
