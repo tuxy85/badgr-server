@@ -37,7 +37,7 @@ def badge_connect_api_info(domain):
                 "https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/profile.readonly"
             ],
             "scopesRequested": [],  # Not implementing relying party yet.
-            "authorizationUrl": "{}/auth/oauth2/authorize".format(domain),
+            "authorizationUrl": "https://{}/auth/oauth2/authorize".format(domain),
             "tokenUrl": "{}{}".format(
                 settings.HTTP_ORIGIN,
                 reverse('oauth2_provider_token')
