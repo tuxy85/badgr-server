@@ -219,7 +219,7 @@ class BadgeConnectApiInfoSerializer(serializers.Serializer):
 
 class BadgeConnectManifestSerializer(serializers.Serializer):
     id = serializers.URLField(read_only=True)
-    badgeConnectAPI = BadgeConnectApiInfoSerializer(many=True, read_only=True)
+    badgeConnectAPI = BadgeConnectApiInfoSerializer(read_only=True)
 
     def to_representation(self, instance):
         data = super(BadgeConnectManifestSerializer, self).to_representation(instance)
