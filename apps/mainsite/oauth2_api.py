@@ -185,7 +185,7 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
 
             manifest_url = '{}://{}/.well-known/badgeconnect.json'.format(url_scheme, app_info.manifest_domain)
             manifest_data = requests.get(manifest_url, headers={'Accept': 'application/json'}).json()
-            manifest = manifest_data['badgeConnectAPI'][0]
+            manifest = manifest_data['badgeConnectAPI']
 
             app_info.name = manifest['name']
             app_info.privacy_url = manifest['privacyPolicyUrl']

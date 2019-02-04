@@ -65,17 +65,16 @@ class BadgeConnectAuthorizationTests(BadgrTestCase, SetupIssuerHelper):
         manifest_data = {
             'id': 'http://exampleissuer.com/.well-known/badgeconnect.json',
             '@context': 'https://w3id.org/openbadges/badgeconnect/v1',
-            'badgeConnectAPI': [
-                {
-                    'name': 'Test Issuing System',
-                    'apiBase': 'http://exampleissuer.com/v1',
-                    'privacyPolicyUrl': 'http://exampleissuer.com/privacy',
-                    'termsOfServiceUrl': 'http://exampleissuer.com/terms',
-                    'scopesRequested': requested_scopes,
-                    'redirectUris': [redirect_uri],
-                    'version': 1
-                }
-            ]
+            'badgeConnectAPI': {
+                'name': 'Test Issuing System',
+                'apiBase': 'http://exampleissuer.com/v1',
+                'privacyPolicyUrl': 'http://exampleissuer.com/privacy',
+                'termsOfServiceUrl': 'http://exampleissuer.com/terms',
+                'scopesRequested': requested_scopes,
+                'redirectUris': [redirect_uri],
+                'version': 1
+            }
+
         }
         responses.add(responses.GET, manifest_data['id'], json=manifest_data)
         response = requests.get(manifest_data['id'])

@@ -26,7 +26,7 @@ def badge_connect_api_info(domain):
                 settings.HTTP_ORIGIN,
                 reverse('badge_connect_manifest', kwargs={'domain': domain})
             ),
-        "badgeConnectAPI": [{
+        "badgeConnectAPI": {
             "name": badgr_app.name,
             "image": "https://placekitten.com/300/300",
             "apiBase": '{}{}'.format(settings.HTTP_ORIGIN, '/bc/v1'),
@@ -48,8 +48,8 @@ def badge_connect_api_info(domain):
             "keys": "{}{}".format(
                 settings.HTTP_ORIGIN,
                 reverse('badge_connect_keyset')
-            ),
-        }]
+            )
+        }
     }
 
 
