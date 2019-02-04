@@ -163,7 +163,7 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
     @staticmethod
     def get_badge_connect(request, *args, **kwargs):
         app_model = get_application_model()
-        enforce_ssl = getattr(settings, 'BADGE_CONNECT_ENFORCE_SSL', True)
+        enforce_ssl = getattr(settings, 'BADGE_CONNECT_ENFORCE_SSL', False)
         url_scheme = 'https'
         redirect_uri = request.query_params.get('redirect_uri', '')
 
@@ -193,12 +193,16 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
 
             filtered_scopes = set(manifest['scopesRequested']) & supported_scopes
             app_info.allowed_scopes = ' '.join(filtered_scopes)
-            app_info.save()
+            try:
+                app_info.save()
 
-            app.name = manifest['name']
-            app.redirect_uris = ' '.join(manifest['redirectUris'])
-            app.authorization_grant_type = app.GRANT_AUTHORIZATION_CODE
-            app.save()
+                app.name = manifest['name']
+                app.redirect_uris = ' '.join(manifest['redirectUris'])
+                app.authorization_grant_type = app.GRANT_AUTHORIZATION_CODE
+                app.save()
+            except:
+                app.delete()
+                raise ApplicationInfo.DoesNotExist("Error processing Badge Connect Application")
 
         return app
 

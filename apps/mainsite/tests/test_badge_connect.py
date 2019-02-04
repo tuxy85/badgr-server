@@ -28,7 +28,7 @@ class ManifestFileTests(BadgrTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.data
         self.assertEqual(data['@context'], 'https://w3id.org/openbadges/badgeconnect/v1')
-        self.assertIn('https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.readonly', data['badgeConnectAPI'][0]['scopesOffered'])
+        self.assertIn('https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/assertion.readonly', data['badgeConnectAPI']['scopesOffered'])
 
         response = self.client.get('/bc/v1/manifest/some.otherdomain.com', headers={'Accept': 'application/json'})
         self.assertEqual(response.status_code, 404)
@@ -43,7 +43,7 @@ class ManifestFileTests(BadgrTestCase):
         ba = BadgrApp.objects.create(name='test', cors='some.domain.com')
         response = self.client.get('/bc/v1/manifest/some.domain.com', headers={'Accept': 'application/json'})
         data = response.data
-        self.assertEqual(data['badgeConnectAPI'][0]['name'], ba.name)
+        self.assertEqual(data['badgeConnectAPI']['name'], ba.name)
 
 
 class BadgeConnectAuthorizationTests(BadgrTestCase, SetupIssuerHelper):
