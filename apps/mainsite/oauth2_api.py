@@ -199,6 +199,7 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
                 app.name = manifest['name']
                 app.redirect_uris = ' '.join(manifest['redirectUris'])
                 app.authorization_grant_type = app.GRANT_AUTHORIZATION_CODE
+                app.client_type = app.CLIENT_CONFIDENTIAL
                 app.save()
             except:
                 app.delete()
