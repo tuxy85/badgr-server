@@ -2,6 +2,7 @@ from django.conf import settings
 from oauth2_provider.oauth2_validators import OAuth2Validator, AccessToken, RefreshToken
 from oauth2_provider.scopes import get_scopes_backend
 from oauthlib.oauth2 import Server
+from urlparse import parse_qs
 
 from mainsite.models import ApplicationInfo
 
@@ -18,8 +19,15 @@ class BadgrOauthServer(Server):
 class BadgrRequestValidator(OAuth2Validator):
 
     def authenticate_client(self, request, *args, **kwargs):
+        if request.client_id == 'BADGE_CONNECT':
+            data = parse_qs(request.body)
+            if data.get('client_assertion_type', [''])[0] != u'urn:ietf:params:oauth:client-assertion-type:jwt-bearer':
+                return False
+            jwt = data.get('client_assertion', [''])[0]
+            if jwt:
+                return True
         # if a request doesnt include client_id or grant_type assume defaults
-        if not (request.client_id and request.grant_type and request.client_secret):
+        elif not (request.client_id and request.grant_type and request.client_secret):
             request.grant_type = 'password'
             request.client_id = getattr(settings, 'OAUTH2_DEFAULT_CLIENT_ID', 'public')
             request.client_secret = u''

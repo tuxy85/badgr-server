@@ -173,7 +173,8 @@ class AuthorizationApiView(OAuthLibMixin, APIView):
             'https://purl.imsglobal.org/spec/obc/v1p0/oauth2scope/profile.readonly'
         }
         try:
-            app = ApplicationInfo.objects.get_by_redirect_uri(redirect_uri)
+            app_info = ApplicationInfo.objects.get_by_redirect_uri(redirect_uri)
+            app = app_info.application
         except ApplicationInfo.DoesNotExist:
             app = app_model.objects.create()
             app_info = ApplicationInfo(application=app)
