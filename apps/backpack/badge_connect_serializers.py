@@ -59,6 +59,21 @@ class BaseSerializerBC(serializers.Serializer):
         return envelope
 
 
+class ListSerializerBC(serializers.ListSerializer, BaseSerializerBC):
+    def to_representation(self, instance):
+        representation = super(ListSerializerBC, self).to_representation(instance)
+        if self.parent is not None:
+            return representation
+        else:
+            return BaseSerializerBC.response_envelope(result=representation,
+                                                      success=self.success,
+                                                      description=self.description)
+
+    @property
+    def data(self):
+        return super(serializers.ListSerializer, self).data
+
+
 class BackpackAssertionSerializerBC(BaseSerializerBC):
     id = serializers.URLField(source='jsonld_id', read_only=True)
     badge = serializers.URLField(source='badgeclass_jsonld_id', read_only=True)
@@ -71,8 +86,9 @@ class BackpackAssertionSerializerBC(BaseSerializerBC):
     revocationReason = serializers.CharField(source='revocation_reason', read_only=True)
     expires = serializers.DateTimeField(source='expires_at', required=False)
 
-    class Meta(DetailSerializerV2.Meta):
+    class Meta:
         model = BadgeInstance
+        list_serializer_class = ListSerializerBC
 
     def to_representation(self, instance):
         representation = super(BackpackAssertionSerializerBC, self).to_representation(instance)

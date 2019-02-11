@@ -8,6 +8,7 @@ import jwcrypto.jwk as jwk
 from openbadges.verifier.openbadges_context import OPENBADGES_CONTEXT_V2_URI, OPENBADGES_CONTEXT_V2_DICT
 import python_jwt as jwt
 import requests
+from rest_framework import views
 import responses
 import time
 from urllib import quote
@@ -176,6 +177,10 @@ class BadgeConnectAuthorizationTests(BadgrTestCase, SetupIssuerHelper):
         assertion.save()
         response = self.client.post('/bc/v1/assertions', data={'id': 'http://a.com/assertion-embedded1'}, format='json')
         self.assertEqual(response.status_code, 201)
+
+        response = self.client.get('/bc/v1/assertions')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 2)
 
         response = self.client.get('/bc/v1/profile')
         self.assertEqual(response.status_code, 200)
