@@ -48,7 +48,7 @@ class IssuerManager(BaseOpenBadgeObjectManager):
            if isinstance(image_url, dict):
                image_url = image_url.get('id')
            image = _fetch_image_and_get_file(image_url, upload_to='remote/issuer')
-        return self.get_or_create(
+        issuer, created = self.get_or_create(
             source_url=source_url,
             defaults=dict(
                 source=source if source is not None else 'local',
@@ -60,6 +60,11 @@ class IssuerManager(BaseOpenBadgeObjectManager):
                 original_json=original_json
             )
         )
+
+        if created:
+            issuer.publish()
+
+        return issuer, created
 
 
 class BadgeClassManager(BaseOpenBadgeObjectManager):
@@ -96,7 +101,7 @@ class BadgeClassManager(BaseOpenBadgeObjectManager):
             image_url = image_url.get('id')
         image = _fetch_image_and_get_file(image_url, upload_to='remote/badgeclass')
 
-        return self.get_or_create(
+        badgeclass, created = self.get_or_create(
             source_url=source_url,
             defaults=dict(
                 issuer=issuer,
@@ -109,6 +114,11 @@ class BadgeClassManager(BaseOpenBadgeObjectManager):
                 original_json=original_json
             )
         )
+
+        if created:
+            badgeclass.publish()
+
+        return badgeclass, created
 
 
 class BadgeInstanceEvidenceManager(models.Manager):
@@ -168,6 +178,7 @@ class BadgeInstanceManager(BaseOpenBadgeObjectManager):
             )
         )
         if created:
+            badgeinstance.publish()
             evidence = list_of(assertion_obo.get('evidence', None))
             if evidence:
                 from issuer.models import BadgeInstanceEvidence

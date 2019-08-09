@@ -22,6 +22,9 @@ from backpack.serializers_v1 import (CollectionSerializerV1)
 from .utils import setup_basic_0_5_0, setup_basic_1_0, setup_resources, CURRENT_DIRECTORY
 
 
+class TestConcurrentBadgeImport(BadgrTestCase):
+    pass
+
 class TestBadgeUploads(BadgrTestCase):
     @responses.activate
     def test_submit_basic_1_0_badge_via_url(self):
