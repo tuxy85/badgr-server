@@ -28,7 +28,7 @@ class BackpackAssertionSerializerV2(DetailSerializerV2, OriginalJsonSerializerMi
     issuerOpenBadgeId = serializers.URLField(source='issuer_jsonld_id', read_only=True)
 
     image = serializers.FileField(read_only=True)
-    recipient = BadgeRecipientSerializerV2(source='*')
+    recipient = BadgeRecipientSerializerV2(source='*', read_only=True)
     issuedOn = DateTimeWithUtcZAtEndField(source='issued_on', read_only=True)
     narrative = MarkdownCharField(required=False)
     evidence = EvidenceItemSerializerV2(many=True, required=False)
@@ -57,6 +57,19 @@ class BackpackAssertionSerializerV2(DetailSerializerV2, OriginalJsonSerializerMi
                 instance_data_pointer['badgeclass']['issuer'] = instance.cached_issuer.get_json(include_extra=True, use_canonical_id=True)
 
         return representation
+
+    def update(self, instance, validated_data):
+        """ Only updating acceptance status (to 'Accepted') is permitted for now. """
+        # Only locally issued badges will ever have an acceptance status other than 'Accepted'
+        if instance.acceptance == 'Unaccepted' and validated_data.get('acceptance') == 'Accepted':
+            instance.acceptance = 'Accepted'
+
+            instance.save()
+            owner = instance.user
+            if owner:
+                owner.publish()
+
+        return instance
 
 
 class BackpackCollectionSerializerV2(DetailSerializerV2):
