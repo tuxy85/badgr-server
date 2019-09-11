@@ -1,0 +1,16 @@
+version: '3.3'
+services:
+  db:
+    image: mysql:5.6.39
+    volumes:
+      - "./mysql:/var/lib/mysql:rw"
+    environment:
+      - "MYSQL_DB=badgr"
+      - "MYSQL_USER=root"
+      - "MYSQL_PASSWORD=password"
+      - "MYSQL_HOST=db"
+      - "MYSQL_ROOT_PASSWORD=password"
+    ports:
+      - "13306:3306"
+    expose:
+      - "3306"
