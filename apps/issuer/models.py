@@ -2,6 +2,8 @@ from __future__ import unicode_literals
 
 import StringIO
 import datetime
+import urllib
+
 import dateutil
 import re
 import uuid
@@ -34,8 +36,8 @@ from mainsite.mixins import ResizeUploadedImage, ScrubUploadedSvgImage
 from mainsite.models import BadgrApp, EmailBlacklist
 from mainsite import blacklist
 from mainsite.utils import OriginSetting, generate_entity_uri
-from .utils import generate_sha256_hashstring, CURRENT_OBI_VERSION, get_obi_context, add_obi_version_ifneeded, \
-    UNVERSIONED_BAKED_VERSION
+from .utils import (add_obi_version_ifneeded, CURRENT_OBI_VERSION, generate_sha256_hashstring, get_obi_context,
+                    parse_original_datetime, UNVERSIONED_BAKED_VERSION)
 
 AUTH_USER_MODEL = getattr(settings, 'AUTH_USER_MODEL', 'auth.User')
 
@@ -50,7 +52,7 @@ logger = badgrlog.BadgrLogger()
 class BaseAuditedModel(cachemodel.CacheModel):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     created_by = models.ForeignKey('badgeuser.BadgeUser', blank=True, null=True, related_name="+")
-    updated_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
     updated_by = models.ForeignKey('badgeuser.BadgeUser', blank=True, null=True, related_name="+")
 
     class Meta:
@@ -164,7 +166,7 @@ class Issuer(ResizeUploadedImage,
     slug = models.CharField(max_length=255, blank=True, null=True, default=None)
     #slug = AutoSlugField(max_length=255, populate_from='name', unique=True, blank=False, editable=True)
 
-    badgrapp = models.ForeignKey('mainsite.BadgrApp', blank=True, null=True, default=None)
+    badgrapp = models.ForeignKey('mainsite.BadgrApp', blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
     name = models.CharField(max_length=1024)
     image = models.FileField(upload_to='uploads/issuers', blank=True, null=True)
@@ -357,8 +359,8 @@ class Issuer(ResizeUploadedImage,
 
     @property
     def cached_badgrapp(self):
-        id = self.badgrapp_id if self.badgrapp_id else getattr(settings, 'BADGR_APP_ID', 1)
-        return BadgrApp.cached.get(id=id)
+        id = self.badgrapp_id if self.badgrapp_id else None
+        return BadgrApp.objects.get_by_id_or_default(badgrapp_id=id)
 
 
 
@@ -618,7 +620,6 @@ class BadgeClass(ResizeUploadedImage,
             **kwargs
         )
 
-
     def get_json(self, obi_version=CURRENT_OBI_VERSION, include_extra=True, use_canonical_id=False):
         obi_version, context_iri = get_obi_context(obi_version)
         json = OrderedDict({'@context': context_iri})
@@ -776,6 +777,12 @@ class BadgeInstance(BaseAuditedModel,
         else:
             return getattr(settings, 'HTTP_ORIGIN') + default_storage.url(self.image.name)
 
+    def get_share_url(self, include_identifier=False):
+        url = self.share_url
+        if include_identifier:
+            url = '%s?identifier__%s=%s' % (url, self.recipient_type, urllib.quote(self.recipient_identifier))
+        return url
+
     @property
     def share_url(self):
         return self.public_url
@@ -840,7 +847,7 @@ class BadgeInstance(BaseAuditedModel,
             # First check if recipient is in the blacklist
             if blacklist.api_query_is_in_blacklist(self.recipient_type, self.recipient_identifier):
                 logger.event(badgrlog.BlacklistAssertionNotCreatedEvent(self))
-                return
+                raise ValidationError("You may not award this badge to this recipient.")
 
             self.salt = uuid.uuid4().hex
             self.created_at = datetime.datetime.now()
@@ -874,10 +881,6 @@ class BadgeInstance(BaseAuditedModel,
         super(BadgeInstance, self).save(*args, **kwargs)
 
     def rebake(self, obi_version=CURRENT_OBI_VERSION, save=True):
-        if self.source_url:
-            # dont rebake imported assertions
-            return
-
         new_image = StringIO.StringIO()
         bake(
             image_file=self.cached_badgeclass.image.file,
@@ -890,6 +893,10 @@ class BadgeInstance(BaseAuditedModel,
             self.save()
 
     def publish(self):
+        if hasattr(self, '_issuer_cache'):
+            del self._issuer_cache
+        if hasattr(self, '_badgeclass_cache'):
+            del self._badgeclass_cache
         super(BadgeInstance, self).publish()
         self.badgeclass.publish()
         if self.cached_recipient_profile:
@@ -960,6 +967,8 @@ class BadgeInstance(BaseAuditedModel,
             return
             # TODO: Report email non-delivery somewhere.
 
+        if badgr_app is None:
+            badgr_app = self.cached_issuer.cached_badgrapp
         if badgr_app is None:
             badgr_app = BadgrApp.objects.get_current(None)
 
@@ -1141,12 +1150,15 @@ class BadgeInstance(BaseAuditedModel,
         return self.get_json()
 
     def get_filtered_json(self, excluded_fields=('@context', 'id', 'type', 'uid', 'recipient', 'badge', 'issuedOn', 'image', 'evidence', 'narrative', 'revoked', 'revocationReason', 'verify', 'verification')):
-        return super(BadgeInstance, self).get_filtered_json(excluded_fields=excluded_fields)
+        filtered = super(BadgeInstance, self).get_filtered_json(excluded_fields=excluded_fields)
+        # Ensure that the expires date string is in the expected ISO-85601 UTC format
+        if filtered is not None and filtered.get('expires', None) and not str(filtered.get('expires')).endswith('Z'):
+            filtered['expires'] = parse_original_datetime(filtered['expires'])
+        return filtered
 
     @cachemodel.cached_method(auto_publish=True)
     def cached_evidence(self):
         return self.badgeinstanceevidence_set.all()
-
 
     @property
     def evidence_url(self):
@@ -1167,9 +1179,9 @@ class BadgeInstance(BaseAuditedModel,
     @evidence_items.setter
     def evidence_items(self, value):
         def _key(narrative, url):
-            return u'{}-{}'.format(narrative, url)
+            return u'{}-{}'.format(narrative or '', url or '')
         existing_evidence_idx = {_key(e.narrative, e.evidence_url): e for e in self.evidence_items}
-        new_evidence_idx = {_key(v.get('narrative',''), v.get('evidence_url','')): v for v in value}
+        new_evidence_idx = {_key(v.get('narrative', None), v.get('evidence_url', None)): v for v in value}
 
         with transaction.atomic():
             if not self.pk:
@@ -1177,7 +1189,7 @@ class BadgeInstance(BaseAuditedModel,
 
             # add missing
             for evidence_data in value:
-                key = _key(evidence_data.get('narrative',''), evidence_data.get('evidence_url',''))
+                key = _key(evidence_data.get('narrative', None), evidence_data.get('evidence_url', None))
                 if key not in existing_evidence_idx:
                     evidence_record, created = BadgeInstanceEvidence.cached.get_or_create(
                         badgeinstance=self,
@@ -1187,7 +1199,7 @@ class BadgeInstance(BaseAuditedModel,
 
             # remove old
             for evidence_record in self.evidence_items:
-                key = _key(evidence_record.narrative or '', evidence_record.evidence_url or '')
+                key = _key(evidence_record.narrative or None, evidence_record.evidence_url or None)
                 if key not in new_evidence_idx:
                     evidence_record.delete()
 

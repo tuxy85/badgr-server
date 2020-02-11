@@ -289,6 +289,7 @@ class ShareBackpackAssertion(BaseEntityDetailView):
     model = BadgeInstance
     permission_classes = (permissions.AllowAny,)  # this is AllowAny to support tracking sharing links in emails
     http_method_names = ('get',)
+    allow_any_unauthenticated_access = True
 
     def get(self, request, **kwargs):
         """
@@ -315,8 +316,10 @@ class ShareBackpackAssertion(BaseEntityDetailView):
         if not badge:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
+        include_identifier = _scrub_boolean(request.query_params.get('include_identifier', False))
+
         share = BackpackBadgeShare(provider=provider, badgeinstance=badge, source=source)
-        share_url = share.get_share_url(provider)
+        share_url = share.get_share_url(provider, include_identifier=include_identifier)
         if not share_url:
             return Response({'error': "invalid share provider"}, status=status.HTTP_400_BAD_REQUEST)
 

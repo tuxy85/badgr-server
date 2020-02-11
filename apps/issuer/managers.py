@@ -36,6 +36,12 @@ class BaseOpenBadgeObjectManager(models.Manager):
 
 
 class IssuerManager(BaseOpenBadgeObjectManager):
+    ALLOWED_MINE_TYPES = [
+        'image/png',
+        'image/gif',
+        'image/jpeg',
+        'image/svg+xml',
+    ]
 
     def update_from_ob2(self, issuer_obo, original_json=None):
 
@@ -44,7 +50,7 @@ class IssuerManager(BaseOpenBadgeObjectManager):
         if image_url:
             if isinstance(image_url, dict):
                 image_url = image_url.get('id')
-            image = _fetch_image_and_get_file(image_url, upload_to='remote/issuer')
+            image = _fetch_image_and_get_file(image_url, self.ALLOWED_MINE_TYPES, upload_to='remote/issuer')
         return self.update_or_create(
             source_url=issuer_obo.get('id'),
             defaults=dict(
@@ -67,9 +73,9 @@ class IssuerManager(BaseOpenBadgeObjectManager):
         image_url = issuer_obo.get('image', None)
         image = None
         if image_url:
-           if isinstance(image_url, dict):
-               image_url = image_url.get('id')
-           image = _fetch_image_and_get_file(image_url, upload_to='remote/issuer')
+            if isinstance(image_url, dict):
+                image_url = image_url.get('id')
+            image = _fetch_image_and_get_file(image_url, self.ALLOWED_MINE_TYPES, upload_to='remote/issuer')
         return self.get_or_create(
             source_url=source_url,
             defaults=dict(
@@ -85,6 +91,10 @@ class IssuerManager(BaseOpenBadgeObjectManager):
 
 
 class BadgeClassManager(BaseOpenBadgeObjectManager):
+    ALLOWED_MINE_TYPES = [
+        'image/png',
+        'image/svg+xml',
+    ]
 
     @transaction.atomic
     def create(self, **kwargs):
@@ -110,7 +120,7 @@ class BadgeClassManager(BaseOpenBadgeObjectManager):
         image_url = badgeclass_obo.get('image')
         if isinstance(image_url, dict):
             image_url = image_url.get('id')
-        image = _fetch_image_and_get_file(image_url, upload_to='remote/badgeclass')
+        image = _fetch_image_and_get_file(image_url, self.ALLOWED_MINE_TYPES, upload_to='remote/badgeclass')
 
         return self.update_or_create(
             source_url=badgeclass_obo.get('id'),
@@ -144,8 +154,9 @@ class BadgeClassManager(BaseOpenBadgeObjectManager):
         image_url = badgeclass_obo.get('image')
         if isinstance(image_url, dict):
             image_url = image_url.get('id')
-        image = _fetch_image_and_get_file(image_url, upload_to='remote/badgeclass')
 
+        image = _fetch_image_and_get_file(image_url, self.ALLOWED_MINE_TYPES, upload_to='remote/badgeclass')
+        test = ''
         return self.get_or_create(
             source_url=source_url,
             defaults=dict(
@@ -176,25 +187,11 @@ class BadgeInstanceEvidenceManager(models.Manager):
             original_json=json.dumps(evidence_obo)
         )
 
-    def update_from_ob2(self, badgeinstance, evidence_obo):
-        if isinstance(evidence_obo, six.string_types):
-            return self.update(
-                badgeinstance=badgeinstance,
-                evidence_url=evidence_obo,
-                narrative=None,
-                original_json=''
-            )
-        return self.update(
-            badgeinstance=badgeinstance,
-            evidence_url=evidence_obo.get('id', None),
-            narrative=evidence_obo.get('narrative', None),
-            original_json=json.dumps(evidence_obo)
-        )
 
-
-def _fetch_image_and_get_file(url, upload_to=''):
-    status_code, storage_name = fetch_remote_file_to_storage(url, upload_to=upload_to,
-                                                             allowed_mime_types=['image/png', 'image/svg+xml'])
+def _fetch_image_and_get_file(url, allowed_mime_types, upload_to=''):
+    status_code, storage_name = fetch_remote_file_to_storage(
+        url, upload_to=upload_to, allowed_mime_types=allowed_mime_types
+    )
     if status_code == 200:
         image = DefaultStorage().open(storage_name)
         image.name = storage_name
@@ -202,19 +199,24 @@ def _fetch_image_and_get_file(url, upload_to=''):
 
 
 class BadgeInstanceManager(BaseOpenBadgeObjectManager):
+    ALLOWED_MINE_TYPES = [
+        'image/png',
+        'image/svg+xml',
+    ]
+
     def update_from_ob2(self, badgeclass, assertion_obo, recipient_identifier, recipient_type='email', original_json=None):
         image = None
         image_url = assertion_obo.get('image', None)
         if isinstance(image_url, dict):
             image_url = image_url.get('id')
         if image_url:
-            image = _fetch_image_and_get_file(image_url, upload_to='remote/assertion')
+            image = _fetch_image_and_get_file(image_url, self.ALLOWED_MINE_TYPES, upload_to='remote/assertion')
 
         issued_on = None
         if 'issuedOn' in assertion_obo:
             issued_on = dateutil.parser.parse(assertion_obo.get('issuedOn'))
 
-        updated = self.update_or_create(
+        updated, created = self.update_or_create(
             source_url=assertion_obo.get('id'),
             defaults=dict(
                 recipient_identifier=recipient_identifier,
@@ -229,15 +231,16 @@ class BadgeInstanceManager(BaseOpenBadgeObjectManager):
                 issued_on=issued_on
             )
         )
-
         evidence = list_of(assertion_obo.get('evidence', None))
-        if evidence:
-            from issuer.models import BadgeInstanceEvidence
-            for evidence_item in evidence:
-                # if we have come this far we all already using ob2
-                BadgeInstanceEvidence.objects.update_from_ob2(badgeclass, evidence_item)
+        evidence_items = []
+        for item in evidence:
+            if isinstance(item, six.string_types):
+                evidence_items.append({'evidence_url': item})  # convert string/url type evidence to consistent format
+            elif hasattr(item, 'get'):
+                evidence_items.append({'evidence_url': item.get('id'), 'narrative': item.get('narrative')})
+        updated.evidence_items = evidence_items
 
-        return updated
+        return updated, created
 
 
     @transaction.atomic
@@ -255,7 +258,7 @@ class BadgeInstanceManager(BaseOpenBadgeObjectManager):
         else:
             if isinstance(image_url, dict):
                 image_url = image_url.get('id')
-            image = _fetch_image_and_get_file(image_url, upload_to='remote/assertion')
+            image = _fetch_image_and_get_file(image_url, self.ALLOWED_MINE_TYPES, upload_to='remote/assertion')
 
         issued_on = None
         if 'issuedOn' in assertion_obo:

@@ -1,9 +1,9 @@
 # Django stuff
-Django==1.11.23
+Django==1.11.27
 semver==2.6.0
 pytz==2017.2
 # PIL support
-Pillow==3.3.2
+Pillow==6.2.0
 python-dateutil==2.7.5
 
 # mysql database
@@ -88,6 +88,7 @@ apispec==0.22.0
 
 apispec-djangorestframework==1.0.6
 responses==0.8.1
+mock==3.0.5
 django_mock_queries==2.0.0
 
 # lti consumer

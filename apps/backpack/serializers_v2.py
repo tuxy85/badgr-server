@@ -8,6 +8,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError as RestframeworkValidationError
 
 from backpack.models import BackpackCollection
+from badgeuser.models import BadgeUser
 from entity.serializers import DetailSerializerV2, EntityRelatedFieldV2
 from issuer.helpers import BadgeCheckHelper
 from issuer.models import BadgeInstance, BadgeClass, Issuer
@@ -76,7 +77,9 @@ class BackpackAssertionAcceptanceSerializerV2(serializers.Serializer):
 class BackpackCollectionSerializerV2(DetailSerializerV2):
     name = serializers.CharField()
     description = MarkdownCharField(required=False)
+    owner = EntityRelatedFieldV2(read_only=True, source='created_by')
     share_url = serializers.URLField(read_only=True)
+    shareHash = serializers.CharField(read_only=True, source='share_hash')
     published = serializers.BooleanField(required=False)
 
     assertions = EntityRelatedFieldV2(many=True, source='badge_items', required=False, queryset=BadgeInstance.cached)
@@ -119,7 +122,12 @@ class BackpackCollectionSerializerV2(DetailSerializerV2):
                 ('share_url', {
                     'type': "string",
                     'format': "url",
-                    'description': "A public URL for sharing the Collection",
+                    'description': "A public URL for sharing the Collection. Read only.",
+                }),
+                ('shareHash', {
+                    'type': "string",
+                    'format': "url",
+                    'description': "The share hash that allows construction of a public sharing URL. Read only.",
                 }),
                 ('published', {
                     'type': "boolean",

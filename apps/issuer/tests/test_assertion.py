@@ -19,6 +19,7 @@ from oauth2_provider.models import Application
 
 from badgeuser.models import CachedEmailAddress, UserRecipientIdentifier
 from issuer.models import BadgeInstance, IssuerStaff, Issuer
+from issuer.utils import parse_original_datetime
 from mainsite.tests import BadgrTestCase, SetupIssuerHelper, SetupOAuth2ApplicationHelper
 from mainsite.utils import OriginSetting
 from rest_framework import serializers
@@ -1080,6 +1081,43 @@ class AssertionTests(SetupIssuerHelper, BadgrTestCase):
             b = actual[i]
             self.assertDictContainsSubset(a, b)
 
+    def test_get_share_url(self):
+        test_user = self.setup_user(authenticate=True)
+        test_issuer = self.setup_issuer(owner=test_user)
+        test_badgeclass = self.setup_badgeclass(issuer=test_issuer)
+        test_assertion = test_badgeclass.issue(recipient_id='new.recipient@email.test')
+        test_assertion2 = test_badgeclass.issue(recipient_id='+15035555555', recipient_type='telephone')
+        test_assertion3 = test_badgeclass.issue(recipient_id='test.example.com/foo?bar=1', recipient_type='url')
+
+        url = test_assertion.get_share_url()
+        self.assertEqual(test_assertion.jsonld_id, url)
+        url = test_assertion.get_share_url(include_identifier=True)
+        self.assertEqual(test_assertion.jsonld_id + '?identifier__email=new.recipient%40email.test', url)
+        url = test_assertion2.get_share_url(include_identifier=True)
+        self.assertEqual(test_assertion2.jsonld_id + '?identifier__telephone=%2B15035555555', url)
+        url = test_assertion3.get_share_url(include_identifier=True)
+        self.assertEqual(test_assertion3.jsonld_id + '?identifier__url=test.example.com/foo%3Fbar%3D1', url)
+
+    def test_parse_original_datetime(self):
+        result = parse_original_datetime('1577232000')
+        self.assertEqual(result, '2019-12-25T00:00:00Z')
+        result = parse_original_datetime('2018-12-23')
+        self.assertEqual(result, '2018-12-23T00:00:00Z')
+        result = parse_original_datetime('2018-12-23T00:00:00')
+        self.assertEqual(result, '2018-12-23T00:00:00Z')
+        result = parse_original_datetime('2018-12-23T00:00:00Z')
+        self.assertEqual(result, '2018-12-23T00:00:00Z')
+        result = parse_original_datetime('2018-12-23T00:00:00-05:00')
+        self.assertEqual(result, '2018-12-23T05:00:00Z')
+        result = parse_original_datetime('2018-12-23T00:00:00+05:00')
+        self.assertEqual(result, '2018-12-22T19:00:00Z')
+        result = parse_original_datetime('2018-12-23T00:00:00+00:00')
+        self.assertEqual(result, '2018-12-23T00:00:00Z')
+        result = parse_original_datetime('2018-12-23T00:00:00+12:34')
+        self.assertEqual(result, '2018-12-22T11:26:00Z')
+        result = parse_original_datetime('2018-12-23T13:37:00+12:34')
+        self.assertEqual(result, '2018-12-23T01:03:00Z')
+
 
 class V2ApiAssertionTests(SetupIssuerHelper, BadgrTestCase):
     def test_v2_issue_by_badgeclassOpenBadgeId(self):
@@ -1403,3 +1441,17 @@ class AllowDuplicatesAPITests(SetupIssuerHelper, BadgrTestCase):
             test_badgeclass.entity_id
         ), new_assertion_props, format='json')
         self.assertEqual(response.status_code, 201, "The badge should award, given an expired prior award.")
+
+    def test_badgeclass_and_issuer_not_in_assertion_cache_record(self):
+        test_user = self.setup_user(authenticate=True)
+        test_issuer = self.setup_issuer(owner=test_user)
+        test_badgeclass = self.setup_badgeclass(issuer=test_issuer)
+        assertion = test_badgeclass.issue(
+            'test3@example.com', expires_at=timezone.now() - timezone.timedelta(days=1)
+        )
+        _ = assertion.badgeclass
+        self.assertTrue(hasattr(assertion, '_badgeclass_cache'))
+
+        cached_assertion = BadgeInstance.cached.get(entity_id=assertion.entity_id)
+        self.assertFalse(hasattr(cached_assertion, '_badgeclass_cache'))
+        self.assertFalse(hasattr(cached_assertion, '_issuer_cache'))

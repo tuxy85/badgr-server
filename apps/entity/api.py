@@ -77,7 +77,7 @@ class BaseEntityListView(BaseEntityView):
         """
         POST a new entity to be owned by the authenticated user
         """
-        if not request.user.is_authenticated():
+        if not request.user or request.user.is_anonymous():
             raise NotAuthenticated()
 
         context = self.get_context_data(**kwargs)
@@ -154,8 +154,6 @@ class BaseEntityDetailView(BaseEntityView, VersionedObjectMixin):
         PUT a new version of an entity
         """
         obj = self.get_object(request, **kwargs)
-        if not self.has_object_permissions(request, obj):
-            return Response(status=HTTP_404_NOT_FOUND)
 
         if data is None:
             data = request.data

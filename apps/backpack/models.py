@@ -87,6 +87,9 @@ class BackpackCollection(BaseAuditedModel, BaseVersionedEntity):
         if self.published:
             return OriginSetting.HTTP+reverse('collection_json', kwargs={'entity_id': self.share_hash})
 
+    def get_share_url(self, **kwargs):
+        return self.share_url
+
     @property
     def badge_items(self):
         return self.cached_badgeinstances()
@@ -142,6 +145,7 @@ class BackpackCollection(BaseAuditedModel, BaseVersionedEntity):
             ('id', add_obi_version_ifneeded(self.share_url, obi_version)),
             ('name', self.name),
             ('description', self.description),
+            ('entityId', self.entity_id),
             ('owner', OrderedDict([
                 ('firstName', self.cached_creator.first_name),
                 ('lastName', self.cached_creator.last_name),
@@ -156,8 +160,10 @@ class BackpackCollection(BaseAuditedModel, BaseVersionedEntity):
 
     @property
     def cached_badgrapp(self):
-        id = self.cached_creator.badgrapp_id if self.cached_creator.badgrapp_id else getattr(settings, 'BADGR_APP_ID', 1)
-        return BadgrApp.cached.get(id=id)
+        creator = self.cached_creator
+        if creator and creator.badgrapp_id:
+            return BadgrApp.objects.get(pk=creator.badgrapp_id)
+        return BadgrApp.objects.get_current(None)
 
 
 class BackpackCollectionBadgeInstance(cachemodel.CacheModel):

@@ -53,7 +53,7 @@ class BadgrSocialLogin(RedirectView):
             set_session_badgr_app(self.request, badgr_app)
         else:
             raise ValidationError('Unable to save BadgrApp in session')
-        
+
         self.request.session['source'] = self.request.GET.get('source', None)
 
         try:
@@ -83,8 +83,14 @@ class BadgrSocialEmailExists(RedirectView):
     def get_redirect_url(self):
         badgr_app = BadgrApp.objects.get_current(self.request)
         if badgr_app is not None:
-            return set_url_query_params(badgr_app.ui_signup_failure_redirect,
-                                        authError='An account already exists with provided email address')
+            verification_email = self.request.session.get('verification_email', '')
+            provider = self.request.session.get('socialaccount_sociallogin', {}).get('account', {}).get('provider', '')
+            return set_url_query_params(
+                badgr_app.ui_signup_failure_redirect,
+                authError='An account already exists with provided email address',
+                email=base64.urlsafe_b64encode(verification_email),
+                socialAuthSlug=provider
+            )
 
 
 class BadgrSocialAccountVerifyEmail(RedirectView):
@@ -182,10 +188,10 @@ def assertion_consumer_service(request, idp_name):
     first_name = [authn_response.ava[key][0] for key in settings.SAML_FIRST_NAME_KEYS if key in authn_response.ava][0]
     last_name = [authn_response.ava[key][0] for key in settings.SAML_LAST_NAME_KEYS if key in authn_response.ava][0]
     badgr_app = BadgrApp.objects.get(pk=request.session.get('badgr_app_pk'))
-    return auto_provision(request, email, first_name, last_name, badgr_app, config)
+    return auto_provision(request, email, first_name, last_name, badgr_app, config, idp_name)
 
 
-def auto_provision(request, email, first_name, last_name, badgr_app, config):
+def auto_provision(request, email, first_name, last_name, badgr_app, config, idp_name):
     def login(user):
         accesstoken = AccessTokenProxy.objects.generate_new_token_for_user(
             user,
@@ -223,10 +229,15 @@ def auto_provision(request, email, first_name, last_name, badgr_app, config):
         if not existing_email.verified:
             # Email exists but is not verified, auto-provision account and log in
             return login(new_account(email))
+        Saml2Account.objects.create(config=config, user=existing_email.user, uuid=email)
         # Email exists and is already verified
-        return redirect("{url}?authError={message}".format(
-            url=badgr_app.ui_signup_failure_redirect,
-            message=urllib.quote("Authentication Error")))
+        url = set_url_query_params(
+            badgr_app.ui_signup_failure_redirect,
+            authError='An account already exists with provided email address',
+            email=base64.urlsafe_b64encode(email),
+            socialAuthSlug=idp_name
+        )
+        return redirect(url)
     except CachedEmailAddress.DoesNotExist:
         # Email does not exist, auto-provision account and log in
         return login(new_account(email))

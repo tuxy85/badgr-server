@@ -111,8 +111,8 @@ class SendsVerificationEmailMixin(object):
 
 
 class DoesNotSendVerificationEmailMixin(object):
-    def test_verification_email(self):
-        # Expect this provider to send a verification email on first login
+    def test_verification_email_is_not_sent(self):
+        # Expect this provider to NOT send a verification email on first login
         before_count = len(mail.outbox)
         response = self.login(self.get_mocked_response())
         self.assertEqual(response.status_code, 302)  # sanity
@@ -124,5 +124,6 @@ class BadgrSocialAuthTestCase(BadgrTestCase):
     def setUp(self):
         super(BadgrSocialAuthTestCase, self).setUp()
         self.badgr_app.ui_login_redirect = 'http://test-badgr.io/'
+        self.badgr_app.ui_signup_failure_redirect = 'http://test-badgr.io/fail'
         self.badgr_app.save()
 

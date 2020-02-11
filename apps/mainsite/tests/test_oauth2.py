@@ -2,6 +2,7 @@ import base64
 import urllib
 
 from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from oauth2_provider.models import Application
@@ -15,6 +16,10 @@ from mainsite.utils import backoff_cache_key
 
 
 class OAuth2TokenTests(SetupIssuerHelper, BadgrTestCase):
+    def setUp(self):
+        cache.clear()
+        super(OAuth2TokenTests, self).setUp()
+
     def test_client_credentials_can_get_token(self):
         client_id = "test"
         client_secret = "secret"
@@ -179,11 +184,12 @@ class OAuth2TokenTests(SetupIssuerHelper, BadgrTestCase):
         response = self.client.post('/v2/badgeclasses', badgeclass_data)
         self.assertEqual(response.status_code, 401)
 
+    @override_settings(TOKEN_BACKOFF_MAXIMUM_SECONDS=3600, TOKEN_BACKOFF_PERIOD_SECONDS=2)
     def test_can_reset_failed_login_backoff(self):
         cache.clear()
         password = 'secret'
         user = self.setup_user(authenticate=False, password=password, email='testemail233@example.test')
-        backoff_key = backoff_cache_key(user.email, None)
+        backoff_key = backoff_cache_key(user.email, '127.0.0.1')
         application = Application.objects.create(
             client_id='public',
             client_secret='',
@@ -214,7 +220,7 @@ class OAuth2TokenTests(SetupIssuerHelper, BadgrTestCase):
 
         post_data['password'] = password
         response = self.client.post('/o/token', data=post_data)
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 429)
         backoff_data = cache.get(backoff_key)
         self.assertEqual(backoff_data['count'], 2, "Count increases even if sent too soon even if password is right")
         self.assertGreaterEqual(backoff_data['until'], backoff_time + timezone.timedelta(seconds=2),

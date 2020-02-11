@@ -1,7 +1,7 @@
 import requests
 from allauth.socialaccount.models import SocialToken, SocialAccount
 from django.contrib import messages
-from django.contrib.admin import AdminSite, ModelAdmin, StackedInline
+from django.contrib.admin import AdminSite, ModelAdmin, StackedInline, TabularInline
 from django.http import HttpResponseRedirect
 from django.shortcuts import reverse
 from django.utils.module_loading import autodiscover_modules
@@ -51,10 +51,13 @@ class BadgrAppAdmin(ModelAdmin):
         ('Meta', {'fields': ('is_active', ),
                   'classes': ('collapse',)}),
         (None, {
-            'fields': ('name', 'cors', 'oauth_authorization_redirect', 'use_auth_code_exchange', 'oauth_application'),
+            'fields': ('name', 'cors', 'oauth_authorization_redirect', 'use_auth_code_exchange', 'oauth_application',
+                       'is_default',),
         }),
         ('signup', {
-            'fields': ('signup_redirect', 'email_confirmation_redirect', 'forgot_password_redirect', 'ui_login_redirect', 'ui_signup_success_redirect', 'ui_connect_success_redirect')
+            'fields': ('signup_redirect', 'email_confirmation_redirect', 'forgot_password_redirect',
+                       'ui_login_redirect', 'ui_signup_success_redirect', 'ui_signup_failure_redirect',
+                       'ui_connect_success_redirect')
         }),
         ('public', {
             'fields': ('public_pages_redirect',)
@@ -78,7 +81,7 @@ class LegacyTokenAdmin(ModelAdmin):
     list_filter = ('created',)
     raw_id_fields = ('user',)
     search_fields = ('user__email', 'user__first_name', 'user__last_name')
-    readonly_fields = ('obscured_token','created')
+    readonly_fields = ('obscured_token', 'created')
     fields = ('obscured_token', 'user', 'created')
 badgr_admin.register(LegacyTokenProxy, LegacyTokenAdmin)
 
@@ -135,10 +138,25 @@ badgr_admin.register(Application, ApplicationInfoAdmin)
 # badgr_admin.register(RefreshToken, RefreshTokenAdmin)
 
 
+class SecuredRefreshTokenInline(TabularInline):
+    fields = ('obscured_token', 'user', 'revoked',)
+    raw_id_fields = ('user', 'application',)
+    readonly_fields = ('user', 'application', 'revoked', 'obscured_token',)
+    model = RefreshToken
+    extra = 0
+
+    def obscured_token(self, obj):
+        if obj.token:
+            return "{}***".format(obj.token[:4])
+    obscured_token.allow_tags = True
+
+
 class SecuredAccessTokenAdmin(AccessTokenAdmin):
     list_display = ("obscured_token", "user", "application", "expires")
-    raw_id_fields = ('user','application')
-    fields = ('obscured_token','user','application','expires','scope',)
+    raw_id_fields = ('user', 'application')
+    fields = ('obscured_token', 'user', 'application', 'expires', 'scope',)
     readonly_fields = ('obscured_token',)
+    inlines = [
+        SecuredRefreshTokenInline
+    ]
 badgr_admin.register(AccessTokenProxy, SecuredAccessTokenAdmin)
-
