@@ -12,7 +12,8 @@ from rest_framework import serializers
 from badgeuser.models import BadgeUser
 from badgeuser.serializers_v2 import BadgeUserEmailSerializerV2
 from entity.serializers import DetailSerializerV2, EntityRelatedFieldV2, BaseSerializerV2
-from issuer.models import Issuer, IssuerStaff, BadgeClass, BadgeInstance, RECIPIENT_TYPE_EMAIL, RECIPIENT_TYPE_ID, RECIPIENT_TYPE_URL, RECIPIENT_TYPE_TELEPHONE
+from issuer.models import Issuer, IssuerStaff, BadgeClass, BadgeInstance, RECIPIENT_TYPE_EMAIL, RECIPIENT_TYPE_ID, \
+    RECIPIENT_TYPE_URL, RECIPIENT_TYPE_TELEPHONE, ListCount
 from issuer.permissions import IsEditor
 from issuer.utils import generate_sha256_hashstring, request_authenticated_with_server_admin_token
 from mainsite.drf_fields import ValidImageField
@@ -704,3 +705,13 @@ class BadgeInstanceSerializerV2(DetailSerializerV2, OriginalJsonSerializerMixin)
             data['issuer'] = data['badgeclass'].issuer
 
         return data
+
+
+class ListCountSerializerV2(DetailSerializerV2, OriginalJsonSerializerMixin):
+    count = serializers.IntegerField(min_value=0, required=True, allow_null=False)
+
+    def __init__(self, count=0):
+        super().__init__()
+        self.count = count
+        self.instance = ListCount()
+        self.instance.count = count

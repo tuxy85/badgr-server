@@ -9,7 +9,7 @@ from rest_framework.status import HTTP_404_NOT_FOUND, HTTP_201_CREATED, HTTP_204
 from rest_framework.views import APIView
 
 import badgrlog
-from mainsite.pagination import BadgrCursorPagination
+from mainsite.pagination import BadgrCursorPagination, BadgrPageNumberPagination
 
 
 class BaseEntityView(APIView):
@@ -178,7 +178,8 @@ class UncachedPaginatedViewMixin(object):
     min_per_page = 1
     max_per_page = 500
     default_per_page = None  # dont paginate by default
-    per_page_query_parameter_name = 'num'
+    cursor_pagination_query_param = 'num'
+    number_pagination_query_param = 'page_size'
     ordering = "-created_at"
 
     def get_ordering(self):
@@ -187,8 +188,13 @@ class UncachedPaginatedViewMixin(object):
     def get_page_size(self, request=None):
         if request is None:
             return self.default_per_page
+        number_pagination_size = request.query_params.get(self.number_pagination_query_param, self.default_per_page)
+        cursor_pagination_size = request.query_params.get(self.cursor_pagination_query_param, self.default_per_page)
         try:
-            per_page = int(request.query_params.get(self.per_page_query_parameter_name, self.default_per_page))
+            if number_pagination_size:
+                per_page = int(number_pagination_size)
+            else:
+                per_page = int(cursor_pagination_size)
             per_page = max(self.min_per_page, per_page)
             return min(self.max_per_page, per_page)
         except (TypeError, ValueError):
@@ -203,7 +209,10 @@ class UncachedPaginatedViewMixin(object):
 
         # only paginate on request
         if per_page:
-            self.paginator = BadgrCursorPagination(ordering=self.get_ordering(), page_size=per_page)
+            if request.query_params.get(self.number_pagination_query_param, self.default_per_page):
+                self.paginator = BadgrPageNumberPagination(page_size=per_page)
+            else:
+                self.paginator = BadgrCursorPagination(ordering=self.get_ordering(), page_size=per_page)
             page = self.paginator.paginate_queryset(queryset, request=request)
         else:
             page = list(queryset)

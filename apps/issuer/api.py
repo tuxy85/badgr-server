@@ -25,7 +25,7 @@ from issuer.permissions import (MayIssueBadgeClass, MayEditBadgeClass, IsEditor,
 from issuer.serializers_v1 import (IssuerSerializerV1, BadgeClassSerializerV1,
                                    BadgeInstanceSerializerV1)
 from issuer.serializers_v2 import IssuerSerializerV2, BadgeClassSerializerV2, BadgeInstanceSerializerV2, \
-    IssuerAccessTokenSerializerV2
+    IssuerAccessTokenSerializerV2, ListCountSerializerV2
 from apispec_drf.decorators import apispec_get_operation, apispec_put_operation, \
     apispec_delete_operation, apispec_list_operation, apispec_post_operation
 from mainsite.permissions import AuthenticatedWithVerifiedIdentifier, IsServerAdmin
@@ -135,9 +135,21 @@ class AllBadgeClassesList(UncachedPaginatedViewMixin, BaseEntityListView):
             {
                 'in': 'query',
                 'name': "num",
-                'type': "string",
-                'description': 'Request pagination of results'
+                'type': "integer",
+                'description': 'Request cursor pagination of results'
             },
+            {
+                "description": "Request page number pagination of results. It override 'num'.",
+                "type": "integer",
+                "name": "page_size",
+                "in": "query"
+            },
+            {
+                "description": "Request the page for page number pagination if 'page_size' is provided",
+                "type": "integer",
+                "name": "page",
+                "in": "query"
+            }
         ]
     )
     def post(self, request, **kwargs):
@@ -180,9 +192,21 @@ class IssuerBadgeClassList(UncachedPaginatedViewMixin, VersionedObjectMixin, Bas
             {
                 'in': 'query',
                 'name': "num",
-                'type': "string",
-                'description': 'Request pagination of results'
+                'type': "integer",
+                'description': 'Request cursor pagination of results'
             },
+            {
+                "description": "Request page number pagination of results. It override 'num'.",
+                "type": "integer",
+                "name": "page_size",
+                "in": "query"
+            },
+            {
+                "description": "Request the page for page number pagination if 'page_size' is provided",
+                "type": "integer",
+                "name": "page",
+                "in": "query"
+            }
         ]
     )
     def get(self, request, **kwargs):
@@ -410,14 +434,33 @@ class BadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, BaseEn
     def get_queryset(self, request=None, **kwargs):
         badgeclass = self.get_object(request, **kwargs)
         queryset = BadgeInstance.objects.filter(badgeclass=badgeclass)
-        recipients = request.query_params.getlist('recipient', None)
-        if recipients:
-            queryset = queryset.filter(recipient_identifier__in=recipients)
+        recipients = request.query_params.getlist('recipient', [])
+        for recipient in recipients:
+            queryset = queryset.filter(recipient_identifier__icontains=recipient)
         if request.query_params.get('include_expired', '').lower() not in ['1', 'true']:
             queryset = queryset.filter(
                 Q(expires_at__gte=datetime.datetime.now()) | Q(expires_at__isnull=True))
-        if request.query_params.get('include_revoked', '').lower() not in ['1', 'true']:
+        include_revoked = request.query_params.get('include_revoked', '').lower()
+        only_revoked = request.query_params.get('only_revoked', '').lower()
+        if include_revoked not in ['1', 'true'] and only_revoked not in ['1', 'true']:
             queryset = queryset.filter(revoked=False)
+        elif only_revoked in ['1', 'true']:
+            queryset = queryset.filter(revoked=True)
+        issued_on_from = request.query_params.get('issued_on_from', None)
+        if issued_on_from and validate_datetime(issued_on_from):
+            queryset = queryset.filter(issued_on__gte=issued_on_from)
+        issued_on_to = request.query_params.get('issued_on_to', None)
+        if issued_on_to and validate_datetime(issued_on_to):
+            queryset = queryset.filter(issued_on__lte=issued_on_to)
+        sort_by = request.query_params.get('sort_by', '').lower()
+        if sort_by == 'recipient':
+            sort_by = 'recipient_identifier'
+        if sort_by in ['recipient_identifier', 'issued_on']:
+            order = request.query_params.get('order', '').lower()
+            if order == 'asc':
+                queryset = queryset.order_by(sort_by)
+            else:
+                queryset = queryset.order_by('-' + sort_by)
 
         return queryset
 
@@ -439,8 +482,20 @@ class BadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, BaseEn
             {
                 'in': 'query',
                 'name': "num",
-                'type': "string",
-                'description': 'Request pagination of results'
+                'type': "integer",
+                'description': 'Request cursor pagination of results'
+            },
+            {
+                "description": "Request page number pagination of results. It override 'num'.",
+                "type": "integer",
+                "name": "page_size",
+                "in": "query"
+            },
+            {
+                "description": "Request the page for page number pagination if 'page_size' is provided",
+                "type": "integer",
+                "name": "page",
+                "in": "query"
             },
             {
                 'in': 'query',
@@ -453,6 +508,36 @@ class BadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, BaseEn
                 'name': "include_revoked",
                 'type': "boolean",
                 'description': 'Include revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "only_revoked",
+                'type': "boolean",
+                'description': 'Return only revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_from",
+                'type': "date",
+                'description': 'Filter assertions with issued date greater than or equal to'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_to",
+                'type': "date",
+                'description': 'Filter assertions with issued date less than or equal to'
+            },
+            {
+                'in': 'query',
+                'name': "sort_by",
+                'type': "string",
+                'description': 'Field for which you can order by. It can be "recipient" or "issued_on"'
+            },
+            {
+                'in': 'query',
+                'name': "order",
+                'type': "string",
+                'description': 'Order of sort_by. It is descending by default otherwise specify "asc" for ascending'
             }
         ]
     )
@@ -469,6 +554,113 @@ class BadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, BaseEn
         # verify the user has permission to the badgeclass
         badgeclass = self.get_object(request, **kwargs)
         return super(BadgeInstanceList, self).post(request, **kwargs)
+
+
+class BadgeInstanceListCount(VersionedObjectMixin, BaseEntityView):
+    model = BadgeClass  # used by get_object()
+    permission_classes = [
+        IsServerAdmin |
+        (AuthenticatedWithVerifiedIdentifier & MayIssueBadgeClass & BadgrOAuthTokenHasScope) |
+        BadgrOAuthTokenHasEntityScope
+    ]
+    v2_serializer_class = ListCountSerializerV2
+    valid_scopes = ["rw:issuer", "rw:issuer:*"]
+
+    def get_queryset(self, request=None, **kwargs):
+        badgeclass = self.get_object(request, **kwargs)
+        queryset = BadgeInstance.objects.filter(badgeclass=badgeclass)
+        recipients = request.query_params.getlist('recipient', [])
+        for recipient in recipients:
+            queryset = queryset.filter(recipient_identifier__icontains=recipient)
+        if request.query_params.get('include_expired', '').lower() not in ['1', 'true']:
+            queryset = queryset.filter(
+                Q(expires_at__gte=datetime.datetime.now()) | Q(expires_at__isnull=True))
+        include_revoked = request.query_params.get('include_revoked', '').lower()
+        only_revoked = request.query_params.get('only_revoked', '').lower()
+        if include_revoked not in ['1', 'true'] and only_revoked not in ['1', 'true']:
+            queryset = queryset.filter(revoked=False)
+        elif only_revoked in ['1', 'true']:
+            queryset = queryset.filter(revoked=True)
+        issued_on_from = request.query_params.get('issued_on_from', None)
+        if issued_on_from and validate_datetime(issued_on_from):
+            queryset = queryset.filter(issued_on__gte=issued_on_from)
+        issued_on_to = request.query_params.get('issued_on_to', None)
+        if issued_on_to and validate_datetime(issued_on_to):
+            queryset = queryset.filter(issued_on__lte=issued_on_to)
+
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super(BadgeInstanceListCount, self).get_context_data(**kwargs)
+        context['badgeclass'] = self.get_object(self.request, **kwargs)
+        return context
+
+    @apispec_list_operation('Assertion',
+        summary="Get a list of Assertions for a single BadgeClass",
+        tags=['Assertions', 'BadgeClasses'],
+        parameters=[
+            {
+                'in': 'query',
+                'name': "recipient",
+                'type': "string",
+                'description': 'A recipient identifier to filter by'
+            },
+            {
+                'in': 'query',
+                'name': "num",
+                'type': "integer",
+                'description': 'Request cursor pagination of results'
+            },
+            {
+                "description": "Request page number pagination of results. It override 'num'.",
+                "type": "integer",
+                "name": "page_size",
+                "in": "query"
+            },
+            {
+                "description": "Request the page for page number pagination if 'page_size' is provided",
+                "type": "integer",
+                "name": "page",
+                "in": "query"
+            },
+            {
+                'in': 'query',
+                'name': "include_expired",
+                'type': "boolean",
+                'description': 'Include expired assertions'
+            },
+            {
+                'in': 'query',
+                'name': "include_revoked",
+                'type': "boolean",
+                'description': 'Include revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "only_revoked",
+                'type': "boolean",
+                'description': 'Return only revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_from",
+                'type': "date",
+                'description': 'Filter assertions with issued date greater than or equal to'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_to",
+                'type': "date",
+                'description': 'Filter assertions with issued date less than or equal to'
+            }
+        ]
+    )
+    def get(self, request, **kwargs):
+        # verify the user has permission to the badgeclass
+        badgeclass = self.get_object(request, **kwargs)
+        queryset = self.get_queryset(request, **kwargs)
+        serializer = ListCountSerializerV2(count=queryset.count())
+        return Response(serializer.data)
 
 
 class IssuerBadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, BaseEntityListView):
@@ -489,14 +681,34 @@ class IssuerBadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, 
     def get_queryset(self, request=None, **kwargs):
         issuer = self.get_object(request, **kwargs)
         queryset = BadgeInstance.objects.filter(issuer=issuer)
-        recipients = request.query_params.getlist('recipient', None)
-        if recipients:
-            queryset = queryset.filter(recipient_identifier__in=recipients)
+        recipients = request.query_params.getlist('recipient', [])
+        for recipient in recipients:
+            queryset = queryset.filter(recipient_identifier__icontains=recipient)
         if request.query_params.get('include_expired', '').lower() not in ['1', 'true']:
             queryset = queryset.filter(
                 Q(expires_at__gte=datetime.datetime.now()) | Q(expires_at__isnull=True))
-        if request.query_params.get('include_revoked', '').lower() not in ['1', 'true']:
+        include_revoked = request.query_params.get('include_revoked', '').lower()
+        only_revoked = request.query_params.get('only_revoked', '').lower()
+        if include_revoked not in ['1', 'true'] and only_revoked not in ['1', 'true']:
             queryset = queryset.filter(revoked=False)
+        elif only_revoked in ['1', 'true']:
+            queryset = queryset.filter(revoked=True)
+        issued_on_from = request.query_params.get('issued_on_from', None)
+        if issued_on_from and validate_datetime(issued_on_from):
+            queryset = queryset.filter(issued_on__gte=issued_on_from)
+        issued_on_to = request.query_params.get('issued_on_to', None)
+        if issued_on_to and validate_datetime(issued_on_to):
+            queryset = queryset.filter(issued_on__lte=issued_on_to)
+        sort_by = request.query_params.get('sort_by', '').lower()
+        if sort_by == 'recipient':
+            sort_by = 'recipient_identifier'
+        if sort_by in ['recipient_identifier', 'issued_on']:
+            order = request.query_params.get('order', '').lower()
+            if order == 'asc':
+                queryset = queryset.order_by(sort_by)
+            else:
+                queryset = queryset.order_by('-' + sort_by)
+
         return queryset
 
     @apispec_list_operation('Assertion',
@@ -512,8 +724,20 @@ class IssuerBadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, 
             {
                 'in': 'query',
                 'name': "num",
-                'type': "string",
-                'description': 'Request pagination of results'
+                'type': "integer",
+                'description': 'Request cursor pagination of results'
+            },
+            {
+                "description": "Request page number pagination of results. It override 'num'.",
+                "type": "integer",
+                "name": "page_size",
+                "in": "query"
+            },
+            {
+                "description": "Request the page for page number pagination if 'page_size' is provided",
+                "type": "integer",
+                "name": "page",
+                "in": "query"
             },
             {
                 'in': 'query',
@@ -527,6 +751,36 @@ class IssuerBadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, 
                 'type': "boolean",
                 'description': 'Include revoked assertions'
             },
+            {
+                'in': 'query',
+                'name': "only_revoked",
+                'type': "boolean",
+                'description': 'Return only revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_from",
+                'type': "date",
+                'description': 'Filter assertions with issued date greater than or equal to'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_to",
+                'type': "date",
+                'description': 'Filter assertions with issued date less than or equal to'
+            },
+            {
+                'in': 'query',
+                'name': "sort_by",
+                'type': "string",
+                'description': 'Field for which you can order by. It can be "recipient" or "issued_on"'
+            },
+            {
+                'in': 'query',
+                'name': "order",
+                'type': "string",
+                'description': 'Order of sort_by. It is descending by default otherwise specify "asc" for ascending'
+            }
         ]
     )
     def get(self, request, **kwargs):
@@ -539,6 +793,108 @@ class IssuerBadgeInstanceList(UncachedPaginatedViewMixin, VersionedObjectMixin, 
     def post(self, request, **kwargs):
         kwargs['issuer'] = self.get_object(request, **kwargs)  # trigger a has_object_permissions() check
         return super(IssuerBadgeInstanceList, self).post(request, **kwargs)
+
+
+class IssuerBadgeInstanceListCount(VersionedObjectMixin, BaseEntityView):
+    model = Issuer  # used by get_object()
+    permission_classes = [
+        IsServerAdmin |
+        (AuthenticatedWithVerifiedIdentifier & IsStaff & BadgrOAuthTokenHasScope) |
+        BadgrOAuthTokenHasEntityScope
+    ]
+    v2_serializer_class = ListCountSerializerV2
+    valid_scopes = ["rw:issuer", "rw:issuer:*"]
+
+    def get_queryset(self, request=None, **kwargs):
+        issuer = self.get_object(request, **kwargs)
+        queryset = BadgeInstance.objects.filter(issuer=issuer)
+        recipients = request.query_params.getlist('recipient', [])
+        for recipient in recipients:
+            queryset = queryset.filter(recipient_identifier__icontains=recipient)
+        if request.query_params.get('include_expired', '').lower() not in ['1', 'true']:
+            queryset = queryset.filter(
+                Q(expires_at__gte=datetime.datetime.now()) | Q(expires_at__isnull=True))
+        include_revoked = request.query_params.get('include_revoked', '').lower()
+        only_revoked = request.query_params.get('only_revoked', '').lower()
+        if include_revoked not in ['1', 'true'] and only_revoked not in ['1', 'true']:
+            queryset = queryset.filter(revoked=False)
+        elif only_revoked in ['1', 'true']:
+            queryset = queryset.filter(revoked=True)
+        issued_on_from = request.query_params.get('issued_on_from', None)
+        if issued_on_from and validate_datetime(issued_on_from):
+            queryset = queryset.filter(issued_on__gte=issued_on_from)
+        issued_on_to = request.query_params.get('issued_on_to', None)
+        if issued_on_to and validate_datetime(issued_on_to):
+            queryset = queryset.filter(issued_on__lte=issued_on_to)
+
+        return queryset
+
+    @apispec_list_operation('Assertion',
+        summary='Get a list of Assertions for a single Issuer',
+        tags=['Assertions', 'Issuers'],
+        parameters=[
+            {
+                'in': 'query',
+                'name': "recipient",
+                'type': "string",
+                'description': 'A recipient identifier to filter by'
+            },
+            {
+                'in': 'query',
+                'name': "num",
+                'type': "integer",
+                'description': 'Request cursor pagination of results'
+            },
+            {
+                "description": "Request page number pagination of results. It override 'num'.",
+                "type": "integer",
+                "name": "page_size",
+                "in": "query"
+            },
+            {
+                "description": "Request the page for page number pagination if 'page_size' is provided",
+                "type": "integer",
+                "name": "page",
+                "in": "query"
+            },
+            {
+                'in': 'query',
+                'name': "include_expired",
+                'type': "boolean",
+                'description': 'Include expired assertions'
+            },
+            {
+                'in': 'query',
+                'name': "include_revoked",
+                'type': "boolean",
+                'description': 'Include revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "only_revoked",
+                'type': "boolean",
+                'description': 'Return only revoked assertions'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_from",
+                'type': "date",
+                'description': 'Filter assertions with issued date greater than or equal to'
+            },
+            {
+                'in': 'query',
+                'name': "issued_on_to",
+                'type': "date",
+                'description': 'Filter assertions with issued date less than or equal to'
+            }
+        ]
+    )
+    def get(self, request, **kwargs):
+        # verify the user has permission to the badgeclass
+        badgeclass = self.get_object(request, **kwargs)
+        queryset = self.get_queryset(request, **kwargs)
+        serializer = ListCountSerializerV2(count=queryset.count())
+        return Response(serializer.data)
 
 
 class BadgeInstanceDetail(BaseEntityDetailView):
@@ -837,3 +1193,12 @@ class IssuersChangedSince(BaseEntityView):
             context=context)
         serializer.is_valid()
         return Response(serializer.data)
+
+
+def validate_datetime(date_text):
+    try:
+        if date_text != datetime.datetime.strptime(date_text, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%dT%H:%M:%SZ"):
+            raise ValueError
+        return True
+    except ValueError:
+        return False

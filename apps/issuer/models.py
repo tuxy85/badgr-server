@@ -1375,3 +1375,14 @@ class BadgeInstanceExtension(BaseOpenBadgeExtension):
     def delete(self, *args, **kwargs):
         super(BadgeInstanceExtension, self).delete(*args, **kwargs)
         self.badgeinstance.publish()
+
+
+class ListCount(OriginalJsonMixin, cachemodel.CacheModel):
+    count = models.IntegerField(blank=False, null=False, default=0)
+
+    def publish(self):
+        super(ListCount, self).publish()
+
+    def delete(self, *args, **kwargs):
+        ret = super(ListCount, self).delete(*args, **kwargs)
+        return ret
